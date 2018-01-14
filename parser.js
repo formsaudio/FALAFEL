@@ -6,6 +6,7 @@ var STATE = [];
 var BLOCK = [];
 var VARS = {};
 var CONTINUE = true;
+var PROGRAMS = {};
 
 // TODO, this is a placeholder
 function speak(word){
@@ -33,7 +34,7 @@ function get_next_word(){
 // TODO figure out what's needed for self encapsulation
 
 function resolve_word(word){
-    word = word.toLower();
+    word = word.toLowerCase();
     if (word === "falafel"){
         // super escape (menu)
     } else if (STATE === "block"){
@@ -100,18 +101,59 @@ function resolve_word(word){
     }
 }
 
+function start_script(){
+    var word = get_next_word().toLowerCase();
+    if (word==="load" || word === "run"){
+        STATE = "load";
+        start_script();
+    }
+    else if (word === "new" || word === "write"){
+        // may want to say something to adknowlege mode shift
+        STATE = "";
+        return "";
+    }
+    else if (state = "load"){
+        return PROGRAMS[word];
+    }
+}
+
+function finalization_script(){
+    // what to do with stack?
+    if (word === "send"){
+        STATE = "send";
+        finalization_script();
+    }
+    if (word === "save"){
+        STATE = "save";
+        finalization_script();
+    }
+    if (word === "as"){
+        // do nothing
+        finalization_script();
+    }
+    if (STATE === "save"){
+        PROGRAMS[word] = STACK;
+    }
+}
+
 // run the program
 function run(){
-    // listen for words
-    while(CONTINUE){
-        var word = get_next_word();
-        if (isword(word)){
-            resolve_word(word);
-        } else {
-            console.log("not word");
-            //keep listening...
+    var program = start_script();
+    if (!program){
+        // listen for words
+        while(CONTINUE){
+            var word = get_next_word();
+            if (isword(word)){
+                resolve_word(word);
+            } else {
+                console.log("not word");
+                //keep listening...
+            }
         }
+    } else {
+        // run it
+        program.forEach(resolve_word);
     }
-    // TODO finalization
-    // what to do with STACK
+
+    finalization_script();
 }
