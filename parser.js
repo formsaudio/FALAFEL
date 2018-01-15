@@ -64,6 +64,17 @@ function resolve_word(word){
         // assignment mode
         VARS[word] = STACK;
         STATE="";
+    } else if (STATE === "expect"){
+        // expect mode, based on stack
+        // next word is what to expect
+        let ex = get_next_word();
+        // word after is what to run if true
+        let if_ex = get_next_word();
+        // word after is what to run if false
+        let if_not_ex = get_next_word();
+        // run the correct program
+        (ex === STACK) ? VARS[if_ex].forEach(resolve_word) : VARS[if_not_ex].forEach(resolve_word);
+        STATE="";
     } else if (STATE === "append"){
         // we're in append mode
         STACK = Array.of(STACK).concat(word);
@@ -96,6 +107,8 @@ function resolve_word(word){
     } else if (word === "append"){
         // append mode
         STATE = "append";
+    } else if (word === "expect"){
+        STATE = "expect";
     } else {
         // it's a literal, put it on stack
         STACK = word;
