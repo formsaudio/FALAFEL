@@ -6,7 +6,8 @@ var BLOCK = [];
 var VARS = {};
 var CONTINUE = true;
 var PROGRAMS = {};
-var LAST_SPOKEN = "";
+var EXPECT = []; // track expect block
+var MODE;
 
 // initalize voice once
 var voice = new SpeechSynthesisUtterance();
@@ -15,41 +16,23 @@ var recognition = new(window.SpeechRecognition || window.webkitSpeechRecognition
 recognition.lang = 'en-US';
 recognition.interimResults = false;
 
-
 function speak(word) {
     voice.text = word;
     voice.rate = 0.8;
     speechSynthesis.speak(voice);
 }
 
-// TODO add confirm method
-
-function listen() {
-    recognition.start();
-    speak("listening");
-    recognition.onresult = function(event) {
-        LAST_SPOKEN = event.results[0][0].transcript);
-    // REALLY bad method for this, but idk what else to do
-    while (!LAST_SPOKEN) {
-        let a = 1;
-    }
-    res = LAST_SPOKEN;
-    LAST_SPOKEN = "";
-    recognition.stop();
-    speak("got + "
-        res)
-    return res;
-}
 
 function send(item, dest) {
-    console.log("Sending " + item + " to " + " dest.");
+    console.log("[TEST] would send " + item + " to " + " dest.");
 }
-
-// TODO add a confirmation method
 
 // TODO figure out what's needed for self encapsulation
 
-function resolve_word(word) {
+// modes are the overarching of the word spoken, they take one word at a time
+
+// main mode has the primary functions of FALAFEL
+function main_mode(word) {
     word = word.toLowerCase();
     if (STATE === "block") {
         // we're in block mode
@@ -62,8 +45,12 @@ function resolve_word(word) {
         }
     } else if (STATE === "escape") {
         // we're in escape mode
-        // escape the word
-        STACK = [word];
+        // escape the word directly to stack, overwriting
+        STACK = word;
+        STATE = "";
+    } else if (STATE === "append-escape") {
+        // add the escaped word to the stack
+        STACK = Array.of(STACK).concat(word);
         STATE = "";
     } else if (STATE === "say") {
         // we're in speak mode
@@ -71,7 +58,7 @@ function resolve_word(word) {
         STATE = "";
     } else if (STATE === "listen") {
         // we're in speak mode
-        STACK = listen();
+        STACK = word;
         STATE = "";
     } else if (STATE === "as") {
         // assignment mode
@@ -80,28 +67,42 @@ function resolve_word(word) {
     } else if (STATE === "expect") {
         // expect mode, based on stack
         // next word is what to expect
-        let ex = listen();
-        // word after is what to run if true
-        let if_ex = listen();
-        // word after is what to run if false
-        let if_not_ex = listen();
-        // run the correct program
-        (ex === STACK) ? VARS[if_ex].forEach(resolve_word): VARS[if_not_ex].forEach(resolve_word);
+        // we don't want to EVER re run old expect
+        EXPECT = [];
+        EXPECT[0] = word;
+        STATE = "expect2";
+        say("then");
+    } else if (STATE === "expect2") {
+        // next word is what var to run if so
+        EXPECT[1] = word;
+        STATE = "expect3";
+        say("else");
+    } else if (STATE === "expect3") {
+        // next word is what var to run if not
+        EXPECT[2] = word;
         STATE = "";
+        // run it
+        (EXPECT[0] === STACK) ? VARS[EXPECT[1]].forEach(main_mode): VARS[EXPECT[2]].forEach(main_mode);
+        // TODO do we want to reclear STATE when done?
+        // STATE = "";
     } else if (STATE === "append") {
         // we're in append mode
+        // are we appending an escape?
+        if (word === "escape") {
+            STATE = "append-escape";
+        }
         STACK = Array.of(STACK).concat(word);
     } else if (word === "escape") {
-        // non-escaped "escape"
+        // non-escaped, non appended "escape"
         STATE = "escape"
     } else if (STATE === "run") {
         // run a block/var
-        VARS[word].forEach(resolve_word);
+        VARS[word].forEach(main_mode);
         // return value is now on stack
         STATE = "";
     } else if (word === "end") {
         // confirm then exit program
-        CONTINUE = false;
+        MODE = finalization_mode;
     } else if (word === "block") {
         // enter block mode
         STATE = "block";
@@ -128,60 +129,56 @@ function resolve_word(word) {
     }
 }
 
-function start_script() {
-    var word = get_next_word().toLowerCase();
+// startup_mode loads/runs existing programs or starts main mode
+function startup_mode(word) {
     if (word === "load" || word === "run") {
         STATE = "load";
-        start_script();
     } else if (word === "new" || word === "write") {
         // may want to say something to adknowlege mode shift
         STATE = "";
-        return "";
+        MODE = main_mode;
     } else if (state = "load") {
-        return PROGRAMS[word];
+        PROGRAMS[word].forEach(main_mode);
+        CONTINUE = FALSE;
     }
 }
 
-function finalization_script() {
+// finalization mode deals with the last interaction, restarts, or stops
+function finalization_mode(word) {
     // what to do with stack?
     if (word === "send") {
         STATE = "send";
-        finalization_script();
-    }
-    if (word === "save") {
+    } else if (word === "save") {
         STATE = "save";
-        finalization_script();
-    }
-    if (word === "as") {
-        // do nothing
-        finalization_script();
-    }
-    if (STATE === "save") {
+    } else if (STATE === "save") {
         PROGRAMS[word] = STACK;
-    }
-    if (STATE === "send") {
-        send(STACK, word)
+    } else if (STATE === "send") {
+        send(STACK, word);
+    } else if (word === "restart") {
+        MODE = startup_mode;
+    } else if (word === "stop") {
+        CONTINUE = false;
     }
 }
 
+// TODO add confirm method
+function on_word_get(word) {
+    recognition.stop();
+    // ADD confirm or something
+    // resolve using the currend MODE
+    MODE(word);
+    speak("listening");
+    if (CONTINUE) {
+        recognition.start();
+    }
+}
+
+
 // run the program
 function run() {
-    var program = start_script();
-    if (!program) {
-        // listen for words
-        while (CONTINUE) {
-            var word = listen();
-            if (isword(word)) {
-                resolve_word(word);
-            } else {
-                console.log("not word");
-                //keep listening...
-            }
-        }
-    } else {
-        // run it
-        program.forEach(resolve_word);
-    }
-
-    finalization_script();
+    MODE = startup_mode;
+    // listen for words
+    recognition.start();
+    speak("listening");
+    recognition.onresult = (e) => on_word_get(e.results[0][0].transcript);
 }
