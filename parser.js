@@ -7,6 +7,7 @@ var VARS = {};
 var CONTINUE = true;
 var PROGRAMS = {};
 var EXPECT = []; // track expect block
+var MODE;
 
 // initalize voice once
 var voice = new SpeechSynthesisUtterance();
@@ -14,12 +15,6 @@ var voice = new SpeechSynthesisUtterance();
 var recognition = new(window.SpeechRecognition || window.webkitSpeechRecognition || window.mozSpeechRecognition || window.msSpeechRecognition)();
 recognition.lang = 'en-US';
 recognition.interimResults = false;
-
-// async branch planning
-
-// speak mode works about the same, disabling listening when talking
-// idk if there's an event, but if not, make one
-
 
 function speak(word) {
     voice.text = word;
@@ -34,7 +29,10 @@ function send(item, dest) {
 
 // TODO figure out what's needed for self encapsulation
 
-function resolve_word(word) {
+// modes are the overarching of the word spoken, they take one word at a time
+
+// main mode has the primary functions of FALAFEL
+function main_mode(word) {
     word = word.toLowerCase();
     if (STATE === "block") {
         // we're in block mode
@@ -50,7 +48,7 @@ function resolve_word(word) {
         // escape the word directly to stack, overwriting
         STACK = word;
         STATE = "";
-    } else if (STATE === "append-escape"){
+    } else if (STATE === "append-escape") {
         // add the escaped word to the stack
         STACK = Array.of(STACK).concat(word);
         STATE = "";
@@ -70,7 +68,7 @@ function resolve_word(word) {
         // expect mode, based on stack
         // next word is what to expect
         // we don't want to EVER re run old expect
-        EXPECT=[];
+        EXPECT = [];
         EXPECT[0] = word;
         STATE = "expect2";
         say("then");
@@ -84,13 +82,13 @@ function resolve_word(word) {
         EXPECT[2] = word;
         STATE = "";
         // run it
-        (EXPECT[0] === STACK) ? VARS[EXPECT[1]].forEach(resolve_word): VARS[EXPECT[2]].forEach(resolve_word);
+        (EXPECT[0] === STACK) ? VARS[EXPECT[1]].forEach(main_mode): VARS[EXPECT[2]].forEach(main_mode);
         // TODO do we want to reclear STATE when done?
         // STATE = "";
     } else if (STATE === "append") {
         // we're in append mode
         // are we appending an escape?
-        if (word === "escape"){
+        if (word === "escape") {
             STATE = "append-escape";
         }
         STACK = Array.of(STACK).concat(word);
@@ -99,12 +97,12 @@ function resolve_word(word) {
         STATE = "escape"
     } else if (STATE === "run") {
         // run a block/var
-        VARS[word].forEach(resolve_word);
+        VARS[word].forEach(main_mode);
         // return value is now on stack
         STATE = "";
     } else if (word === "end") {
         // confirm then exit program
-        CONTINUE = false;
+        MODE = finalization_mode;
     } else if (word === "block") {
         // enter block mode
         STATE = "block";
@@ -131,67 +129,56 @@ function resolve_word(word) {
     }
 }
 
-function start_script() {
-    var word = get_next_word().toLowerCase();
+// startup_mode loads/runs existing programs or starts main mode
+function startup_mode(word) {
     if (word === "load" || word === "run") {
         STATE = "load";
-        start_script();
     } else if (word === "new" || word === "write") {
         // may want to say something to adknowlege mode shift
         STATE = "";
-        return "";
+        MODE = main_mode;
     } else if (state = "load") {
-        return PROGRAMS[word];
+        PROGRAMS[word].forEach(main_mode);
+        CONTINUE = FALSE;
     }
 }
 
-function finalization_script() {
+// finalization mode deals with the last interaction, restarts, or stops
+function finalization_mode(word) {
     // what to do with stack?
     if (word === "send") {
         STATE = "send";
-        finalization_script();
-    }
-    if (word === "save") {
+    } else if (word === "save") {
         STATE = "save";
-        finalization_script();
-    }
-    if (word === "as") {
-        // do nothing
-        finalization_script();
-    }
-    if (STATE === "save") {
+    } else if (STATE === "save") {
         PROGRAMS[word] = STACK;
-    }
-    if (STATE === "send") {
-        send(STACK, word)
+    } else if (STATE === "send") {
+        send(STACK, word);
+    } else if (word === "restart") {
+        MODE = startup_mode;
+    } else if (word === "stop") {
+        CONTINUE = false;
     }
 }
 
 // TODO add confirm method
-function on_word_get(word){
+function on_word_get(word) {
     recognition.stop();
     // ADD confirm or something
-    resolve_word(word);
+    // resolve using the currend MODE
+    MODE(word);
     speak("listening");
-    if (CONTINUE){
+    if (CONTINUE) {
         recognition.start();
-    }
-    else {
-        finalization_script()
     }
 }
 
+
 // run the program
 function run() {
-    var program = start_script();
-    if (!program) {
-        // listen for words
-        recognition.start();
-        speak("listening");
-        recognition.onresult = (e) => on_word_get(e.results[0][0].transcript);
-        }
-    } else {
-        // run it
-        program.forEach(resolve_word);
-    }
+    MODE = startup_mode;
+    // listen for words
+    recognition.start();
+    speak("listening");
+    recognition.onresult = (e) => on_word_get(e.results[0][0].transcript);
 }
