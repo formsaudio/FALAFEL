@@ -15,6 +15,18 @@ var recognition = new(window.SpeechRecognition || window.webkitSpeechRecognition
 recognition.lang = 'en-US';
 recognition.interimResults = false;
 
+// async branch planning
+// listen for a word
+// when you hear one, fire an event
+// this event stops the listener (avoid race conditions, at least)
+// the event runs confirm, if necessary
+// the event resolves the word
+// the event re-enables listening mode
+
+// speak mode works about the same, disabling listening when talking
+// idk if there's an event, but if not, make one
+
+// we need some new events
 
 function speak(word) {
     voice.text = word;
@@ -24,7 +36,7 @@ function speak(word) {
 
 // TODO add confirm method
 
-function listen() {
+function start_listener() {
     recognition.start();
     speak("listening");
     recognition.onresult = function(event) {
@@ -42,13 +54,14 @@ function listen() {
 }
 
 function send(item, dest) {
-    console.log("Sending " + item + " to " + " dest.");
+    console.log("[TEST] would send " + item + " to " + " dest.");
 }
 
 // TODO add a confirmation method
 
 // TODO figure out what's needed for self encapsulation
 
+// TODO - resolve_word needs not to depend on listen()
 function resolve_word(word) {
     word = word.toLowerCase();
     if (STATE === "block") {
